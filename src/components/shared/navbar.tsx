@@ -60,7 +60,7 @@ export function Navbar({ searchPlaceholder = "Search leads, deals, or tasks...",
   }
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-gray-100 bg-white/95 backdrop-blur-sm px-6">
+    <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b border-gray-100 bg-white/95 backdrop-blur-sm px-6">
       {/* Search */}
       <div className="flex-1 max-w-md">
         <div className="relative flex items-center">

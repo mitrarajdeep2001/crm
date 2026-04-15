@@ -62,6 +62,7 @@ export async function createLeadAction(formData: FormData) {
       jobTitle: parsed.data.jobTitle ?? null,
       status: parsed.data.status,
       source: parsed.data.source,
+      assignedToId: sessionUser.id,
       projectedValue: parsed.data.projectedValue ?? null,
       timezone: parsed.data.timezone ?? null,
       notes: parsed.data.notes ?? null,

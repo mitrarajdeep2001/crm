@@ -230,7 +230,7 @@ export async function POST(request: NextRequest) {
       jobTitle: parsed.data.jobTitle ?? null,
       status: parsed.data.status,
       source: parsed.data.source,
-      assignedToId: parsed.data.assignedToId ?? null,
+      assignedToId: parsed.data.assignedToId ?? sessionUser.id,
       projectedValue: parsed.data.projectedValue ?? null,
       winProbability: parsed.data.winProbability ?? null,
       timezone: parsed.data.timezone ?? null,
