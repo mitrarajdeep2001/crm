@@ -1,57 +1,134 @@
 "use server";
 
+import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { mockLeads } from "@/lib/data/mock";
+import { db } from "@/lib/db";
+import { leads } from "@/lib/db/schema";
+import { createLeadSchema, updateLeadSchema } from "@/lib/validators";
+import { getSessionUser } from "@/lib/auth/session";
 
-// In-memory store for demo (in production use DB)
-let leadsStore = [...mockLeads];
+async function generateLeadId() {
+  for (let i = 0; i < 8; i += 1) {
+    const candidate = `L-${Math.floor(100000 + Math.random() * 900000)}`;
+    const [existing] = await db
+      .select({ id: leads.id })
+      .from(leads)
+      .where(eq(leads.leadId, candidate))
+      .limit(1);
 
-export async function createLeadAction(formData: FormData) {
-  const firstName = formData.get("firstName") as string;
-  const lastName = formData.get("lastName") as string;
-  const email = formData.get("email") as string;
-  const company = formData.get("company") as string;
-  const status = (formData.get("status") as string) || "new_lead";
-  const source = (formData.get("source") as string) || "other";
-
-  if (!firstName || !lastName || !email) {
-    return { error: "First name, last name, and email are required" };
+    if (!existing) {
+      return candidate;
+    }
   }
 
-  const newLead = {
-    id: leadsStore.length + 1,
-    leadId: `L-${90430 + leadsStore.length}`,
-    firstName,
-    lastName,
-    email,
-    phone: formData.get("phone") as string || "",
-    company: company || "",
-    jobTitle: formData.get("jobTitle") as string || "",
-    status: status as "new_lead" | "qualified" | "in_progress" | "lost" | "converted",
-    source: source as "linkedin_ads" | "direct_referral" | "conference" | "webinar" | "organic_search" | "cold_outreach" | "partner" | "other",
-    assignedToId: null,
-    assignedTo: null,
-    projectedValue: formData.get("projectedValue") as string || "0",
-    winProbability: 0,
-    timezone: "",
-    notes: formData.get("notes") as string || "",
-    createdAt: new Date(),
-  };
+  return `L-${Date.now().toString().slice(-8)}`;
+}
 
-  leadsStore.push(newLead as typeof leadsStore[0]);
+export async function createLeadAction(formData: FormData) {
+  const sessionUser = await getSessionUser();
+  if (!sessionUser) {
+    return { error: "Unauthorized" };
+  }
+
+  const parsed = createLeadSchema.safeParse({
+    firstName: (formData.get("firstName") as string | null)?.trim(),
+    lastName: (formData.get("lastName") as string | null)?.trim(),
+    email: (formData.get("email") as string | null)?.trim(),
+    phone: (formData.get("phone") as string | null)?.trim() || undefined,
+    company: (formData.get("company") as string | null)?.trim() || undefined,
+    jobTitle: (formData.get("jobTitle") as string | null)?.trim() || undefined,
+    status: (formData.get("status") as string | null) || "new_lead",
+    source: (formData.get("source") as string | null) || "other",
+    projectedValue: (formData.get("projectedValue") as string | null)?.trim() || undefined,
+    timezone: (formData.get("timezone") as string | null)?.trim() || undefined,
+    notes: (formData.get("notes") as string | null)?.trim() || undefined,
+  });
+
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid lead data" };
+  }
+
+  const leadId = await generateLeadId();
+
+  const [lead] = await db
+    .insert(leads)
+    .values({
+      leadId,
+      firstName: parsed.data.firstName,
+      lastName: parsed.data.lastName,
+      email: parsed.data.email.toLowerCase(),
+      phone: parsed.data.phone ?? null,
+      company: parsed.data.company ?? null,
+      jobTitle: parsed.data.jobTitle ?? null,
+      status: parsed.data.status,
+      source: parsed.data.source,
+      projectedValue: parsed.data.projectedValue ?? null,
+      timezone: parsed.data.timezone ?? null,
+      notes: parsed.data.notes ?? null,
+    })
+    .returning({
+      id: leads.id,
+      leadId: leads.leadId,
+      firstName: leads.firstName,
+      lastName: leads.lastName,
+      email: leads.email,
+      status: leads.status,
+      source: leads.source,
+      createdAt: leads.createdAt,
+    });
+
   revalidatePath("/leads");
-  return { success: true, lead: newLead };
+  return { success: true, lead };
 }
 
 export async function updateLeadAction(id: number, formData: FormData) {
-  const idx = leadsStore.findIndex((l) => l.id === id);
-  if (idx === -1) return { error: "Lead not found" };
+  const sessionUser = await getSessionUser();
+  if (!sessionUser) {
+    return { error: "Unauthorized" };
+  }
 
-  leadsStore[idx] = {
-    ...leadsStore[idx],
-    status: (formData.get("status") as "new_lead" | "qualified" | "in_progress" | "lost" | "converted") || leadsStore[idx].status,
-    notes: (formData.get("notes") as string) || leadsStore[idx].notes,
-  };
+  const parsed = updateLeadSchema.safeParse({
+    firstName: (formData.get("firstName") as string | null)?.trim() || undefined,
+    lastName: (formData.get("lastName") as string | null)?.trim() || undefined,
+    email: (formData.get("email") as string | null)?.trim() || undefined,
+    phone: (formData.get("phone") as string | null)?.trim() || undefined,
+    company: (formData.get("company") as string | null)?.trim() || undefined,
+    jobTitle: (formData.get("jobTitle") as string | null)?.trim() || undefined,
+    status: (formData.get("status") as string | null) || undefined,
+    source: (formData.get("source") as string | null) || undefined,
+    projectedValue: (formData.get("projectedValue") as string | null)?.trim() || undefined,
+    timezone: (formData.get("timezone") as string | null)?.trim() || undefined,
+    notes: (formData.get("notes") as string | null)?.trim() || undefined,
+  });
+
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid update payload" };
+  }
+
+  const entries = Object.entries(parsed.data).filter(([, value]) => value !== undefined);
+  if (entries.length === 0) {
+    return { error: "No fields to update" };
+  }
+
+  const updateData: Record<string, unknown> = {};
+  for (const [key, value] of entries) {
+    if (key === "email" && typeof value === "string") {
+      updateData.email = value.toLowerCase();
+      continue;
+    }
+    updateData[key] = value;
+  }
+  updateData.updatedAt = new Date();
+
+  const [updatedLead] = await db
+    .update(leads)
+    .set(updateData)
+    .where(eq(leads.id, id))
+    .returning({ id: leads.id });
+
+  if (!updatedLead) {
+    return { error: "Lead not found" };
+  }
 
   revalidatePath("/leads");
   revalidatePath(`/leads/${id}`);
@@ -59,7 +136,20 @@ export async function updateLeadAction(id: number, formData: FormData) {
 }
 
 export async function deleteLeadAction(id: number) {
-  leadsStore = leadsStore.filter((l) => l.id !== id);
+  const sessionUser = await getSessionUser();
+  if (!sessionUser) {
+    return { error: "Unauthorized" };
+  }
+
+  const [deletedLead] = await db
+    .delete(leads)
+    .where(eq(leads.id, id))
+    .returning({ id: leads.id });
+
+  if (!deletedLead) {
+    return { error: "Lead not found" };
+  }
+
   revalidatePath("/leads");
   return { success: true };
 }

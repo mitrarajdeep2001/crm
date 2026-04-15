@@ -15,8 +15,9 @@ export const createLeadSchema = z.object({
   jobTitle: z.string().optional(),
   status: z.enum(["new_lead", "qualified", "in_progress", "lost", "converted"]).default("new_lead"),
   source: z.enum(["linkedin_ads", "direct_referral", "conference", "webinar", "organic_search", "cold_outreach", "partner", "other"]).default("other"),
-  assignedToId: z.number().optional(),
+  assignedToId: z.number().nullable().optional(),
   projectedValue: z.string().optional(),
+  winProbability: z.number().int().min(0).max(100).nullable().optional(),
   timezone: z.string().optional(),
   notes: z.string().optional(),
 });

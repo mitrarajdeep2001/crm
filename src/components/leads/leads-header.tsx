@@ -1,29 +1,63 @@
 "use client";
 
 import { useState } from "react";
-import { Filter, UserPlus } from "lucide-react";
+import { Search, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 
-export function LeadsHeader() {
+interface LeadsHeaderProps {
+  search: string;
+  status: string;
+  onSearchChange: (value: string) => void;
+  onStatusChange: (value: string) => void;
+  onLeadCreated: () => void;
+}
+
+export function LeadsHeader({
+  search,
+  status,
+  onSearchChange,
+  onStatusChange,
+  onLeadCreated,
+}: LeadsHeaderProps) {
   const [open, setOpen] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [newLeadStatus, setNewLeadStatus] = useState("new_lead");
+  const [newLeadSource, setNewLeadSource] = useState("other");
 
   async function handleAddLead(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    setIsCreating(true);
     const formData = new FormData(e.currentTarget);
+    formData.set("status", newLeadStatus);
+    formData.set("source", newLeadSource);
     
     try {
-      await fetch("/api/leads", {
+      const response = await fetch("/api/leads", {
         method: "POST",
         body: formData,
       });
-      toast.success("Lead added successfully!");
+
+      const data = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        toast.error(data.error || "Failed to add lead");
+        return;
+      }
+
+      onLeadCreated();
+      window.dispatchEvent(new Event("leads:changed"));
       setOpen(false);
+      toast.success("Lead added successfully");
+      e.currentTarget.reset();
+      setNewLeadStatus("new_lead");
+      setNewLeadSource("other");
     } catch {
       toast.error("Failed to add lead");
+    } finally {
+      setIsCreating(false);
     }
   }
 
@@ -36,10 +70,28 @@ export function LeadsHeader() {
         </p>
       </div>
       <div className="flex items-center gap-3">
-        <Button variant="outline" size="sm" className="gap-2">
-          <Filter className="h-4 w-4" />
-          Filters
-        </Button>
+        <div className="relative w-64">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <Input
+            value={search}
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder="Search leads..."
+            className="h-9 pl-9"
+          />
+        </div>
+        <Select value={status} onValueChange={onStatusChange}>
+          <SelectTrigger className="h-9 w-44">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Statuses</SelectItem>
+            <SelectItem value="new_lead">New Lead</SelectItem>
+            <SelectItem value="qualified">Qualified</SelectItem>
+            <SelectItem value="in_progress">In Progress</SelectItem>
+            <SelectItem value="lost">Lost</SelectItem>
+            <SelectItem value="converted">Converted</SelectItem>
+          </SelectContent>
+        </Select>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button size="sm" className="gap-2">
@@ -73,7 +125,7 @@ export function LeadsHeader() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</label>
-                  <Select name="status" defaultValue="new_lead">
+                  <Select value={newLeadStatus} onValueChange={setNewLeadStatus}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -87,7 +139,7 @@ export function LeadsHeader() {
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Source</label>
-                  <Select name="source" defaultValue="other">
+                  <Select value={newLeadSource} onValueChange={setNewLeadSource}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -104,7 +156,9 @@ export function LeadsHeader() {
               </div>
               <div className="flex justify-end gap-3 pt-2">
                 <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-                <Button type="submit">Add Lead</Button>
+                <Button type="submit" disabled={isCreating}>
+                  {isCreating ? "Adding..." : "Add Lead"}
+                </Button>
               </div>
             </form>
           </DialogContent>
